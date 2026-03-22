@@ -6,6 +6,8 @@ import { getBiasExplanation, getGroupExplanation } from "./utils/geminiService";
 import { generateComplianceReport } from "./utils/pdfReport";
 import ScoreSimulator from "./components/ScoreSimulator";
 import ComplianceMapper from "./components/ComplianceMapper";
+import FairnessToggle from "./components/FairnessToggle";
+import { runFullFairnessAudit } from "./utils/fairnessMetrics";
 import LandingPage from "./components/LandingPage";
 import Navbar from "./components/Navbar";
 import AuditHistory from "./components/AuditHistory";
@@ -73,6 +75,7 @@ function App() {
   const [screen, setScreen] = useState("upload");
   const [biasResults, setBiasResults] = useState(null);
   const [geminiResults, setGeminiResults] = useState(null);
+  const [advancedMetrics, setAdvancedMetrics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
   const [fileName, setFileName] = useState("");
@@ -98,6 +101,14 @@ function App() {
     setLoadingMsg("Scanning for bias patterns...");
     const results = analyzeBias(input.csvData, input.decisionCol, input.demographicCols);
     setBiasResults(results);
+
+    const advanced = runFullFairnessAudit(
+      input.csvData,
+      input.decisionCol,
+      input.demographicCols,
+      null
+    );
+    setAdvancedMetrics(advanced);
 
     setLoadingMsg("Asking Gemini AI to explain the findings...");
     const gemini = await getBiasExplanation(results);
@@ -162,457 +173,474 @@ function App() {
 
     screenContent = (
       <div style={{ minHeight: "100vh", background: theme.bg, 
-        width: "100%", paddingTop: 56 }}>
-        <div style={{ 
-          maxWidth: 900, 
-          margin: "0 auto", 
-          padding: "2rem 1.5rem" 
-        }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "2rem" }}>
-          <button onClick={() => { setScreen("upload"); setGeminiResults(null); }}
-            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid " + theme.border,
-              background: theme.card, color: theme.text, cursor: "pointer", fontSize: 13 }}>
-            Back
-          </button>
-          <h1 style={{ fontSize: 24, fontWeight: 600, color: theme.text, margin: 0 }}>
-            Fair<span style={{ color: theme.accent }}>Sight</span> Results
-          </h1>
+        paddingTop: 56 }}>
+        
+        {/* Top header bar - full width */}
+        <div style={{ background: theme.card, 
+          borderBottom: "1px solid " + theme.border,
+          padding: "12px 32px", display: "flex", 
+          alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button onClick={() => setScreen("upload")}
+              style={{ padding: "6px 14px", borderRadius: 8,
+                border: "1px solid " + theme.border,
+                background: "transparent", cursor: "pointer",
+                fontSize: 13, color: theme.text }}>
+              Back
+            </button>
+            <h1 style={{ fontSize: 20, fontWeight: 600, 
+              color: theme.text, margin: 0 }}>
+              Fair<span style={{ color: theme.accent }}>Sight</span> Results
+            </h1>
+            <span style={{ fontSize: 12, color: theme.muted,
+              background: theme.bg, padding: "3px 10px",
+              borderRadius: 10, border: "1px solid " + theme.border }}>
+              {fileName}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => generateComplianceReport(fileName, biasResults, geminiResults)}
+              style={{ padding: "7px 16px", borderRadius: 8, fontSize: 13,
+                fontWeight: 500, cursor: "pointer",
+                border: "1px solid " + theme.border,
+                background: "transparent", color: theme.text }}>
+              Download PDF
+            </button>
+            <button onClick={() => setScreen("compare")}
+              style={{ padding: "7px 16px", borderRadius: 8, fontSize: 13,
+                fontWeight: 500, cursor: "pointer", border: "none",
+                background: theme.accent, color: "white" }}>
+              Compare datasets
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: "1.5rem", flexWrap: "wrap" }}>
-          {["Score", "Chart", "Fixes", "PDF"].map((section) => (
-            <a key={section} href={"#section-" + section.toLowerCase()}
-              style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12,
-                fontWeight: 500, border: "1px solid " + theme.border,
-                color: theme.muted, textDecoration: "none",
-                background: theme.card }}>
-              {section}
-            </a>
+        {/* KPI row - full width */}
+        <div style={{ padding: "16px 32px", 
+          borderBottom: "1px solid " + theme.border,
+          display: "grid", 
+          gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+          {[
+            { label: "Fairness score", 
+              value: score + "/100", 
+              color: scoreColor },
+            { label: "Risk level", 
+              value: scoreLabel, 
+              color: scoreColor },
+            { label: "Parity gap", 
+              value: (biasResults.metrics?.demographicParity || 0) + "%", 
+              color: (biasResults.metrics?.demographicParity || 0) > 20 ? "#DC2626" : "#16A34A" },
+            { label: "4/5ths rule", 
+              value: biasResults.metrics?.fourFifthsRule?.passes ? "PASS" : "FAIL",
+              color: biasResults.metrics?.fourFifthsRule?.passes ? "#16A34A" : "#DC2626" },
+            { label: "High risk groups", 
+              value: biasResults.groupResults.filter(g => g.riskLevel === "high").length,
+              color: biasResults.groupResults.filter(g => g.riskLevel === "high").length > 0 ? "#DC2626" : "#16A34A" },
+            { label: "Composite score",
+              value: (advancedMetrics?.compositeScore?.composite || score) + "/100",
+              color: scoreColor }
+          ].map((kpi, i) => (
+            <div key={i} style={{ background: theme.card,
+              border: "1px solid " + theme.border,
+              borderRadius: 12, padding: "12px 16px" }}>
+              <div style={{ fontSize: 11, color: theme.muted, 
+                marginBottom: 4 }}>{kpi.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, 
+                color: kpi.color }}>{kpi.value}</div>
+            </div>
           ))}
         </div>
 
-          <div style={{ display: "grid", 
-            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", 
-            gap: 16, marginBottom: "1.5rem" }}>
-            
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div id="section-score" style={{ background: theme.card, border: "1px solid " + theme.border, borderRadius: 16,
-                padding: "2rem", textAlign: "center" }}>
-                <div style={{ fontSize: 80, fontWeight: 700, color: scoreColor, lineHeight: 1 }}>
-                  {score}
-                </div>
-                <div style={{ fontSize: 14, color: theme.muted, marginTop: 4 }}>Fairness Score out of 100</div>
-                <div style={{ marginTop: 12, display: "inline-block", padding: "4px 16px",
-                  borderRadius: 20, background: scoreColor + "20", color: scoreColor,
-                  fontSize: 13, fontWeight: 500 }}>
-                  {scoreLabel}
-                </div>
-              </div>
+        {/* Main content - 3 column grid */}
+        <div style={{ padding: "20px 32px", display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr", gap: 16,
+          alignItems: "start" }}>
 
-              {biasResults.metrics && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10 }}>
-                  {[
-                    {
-                      label: "Fairness score",
-                      value: biasResults.fairnessScore + "/100",
-                      sub: "Overall rating",
-                      color: biasResults.fairnessScore >= 80 ? "#16A34A" :
-                             biasResults.fairnessScore >= 60 ? "#D97706" : "#DC2626"
-                    },
-                    {
-                      label: "Demographic parity gap",
-                      value: biasResults.metrics.demographicParity + "%",
-                      sub: "Max approval rate diff",
-                      color: biasResults.metrics.demographicParity > 20 ? "#DC2626" :
-                             biasResults.metrics.demographicParity > 10 ? "#D97706" : "#16A34A"
-                    },
-                    {
-                      label: "Statistical parity ratio",
-                      value: biasResults.metrics.statisticalParityRatio,
-                      sub: "Min/max ratio",
-                      color: biasResults.metrics.statisticalParityRatio < 0.8 ? "#DC2626" :
-                             biasResults.metrics.statisticalParityRatio < 0.9 ? "#D97706" : "#16A34A"
-                    },
-                    {
-                      label: "4/5ths rule",
-                      value: biasResults.metrics.fourFifthsRule.passes ? "PASS" : "FAIL",
-                      sub: biasResults.metrics.fourFifthsRule.passes
-                        ? "No violations"
-                        : biasResults.metrics.fourFifthsRule.violations.length + " violating",
-                      color: biasResults.metrics.fourFifthsRule.passes ? "#16A34A" : "#DC2626"
-                    }
-                  ].map((m, i) => (
-                    <div key={i} style={{ background: theme.card,
-                      border: "1px solid " + theme.border,
-                      borderRadius: 12, padding: "1rem" }}>
-                      <div style={{ fontSize: 11, color: theme.muted, marginBottom: 4 }}>
-                        {m.label}
-                      </div>
-                      <div style={{ fontSize: 22, fontWeight: 700, color: m.color }}>
-                        {m.value}
-                      </div>
-                      <div style={{ fontSize: 11, color: theme.muted, marginTop: 2 }}>
-                        {m.sub}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            
-            <div id="section-chart" style={{ background: theme.card, border: "1px solid " + theme.border,
-              borderRadius: 16, padding: "1.5rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", 
-                alignItems: "center", marginBottom: "1rem" }}>
-                <h2 style={{ fontSize: 15, fontWeight: 600, color: theme.text, margin: 0 }}>
-                  Approval rate by group
-                </h2>
-                <span style={{ fontSize: 12, color: theme.muted }}>
-                  Higher = more approvals received
-                </span>
-              </div>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart 
-                  data={[...biasResults.groupResults]
-                    .sort((a,b) => b.disparity - a.disparity)
-                    .slice(0, 8)}
-                  margin={{ top: 25, right: 20, left: -10, bottom: 20 }}
-                  barCategoryGap="25%"
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke={theme.border} vertical={false} />
-                  <XAxis
-                    dataKey="group"
-                    tick={{ fontSize: 10, fill: theme.muted }}
-                    tickLine={false}
-                    interval={0}
-                    height={45}
-                    angle={-25}
-                    textAnchor="end"
-                    tickFormatter={(v) => v.length > 9 ? v.slice(0,9)+".." : v}
-                  />
-                  <YAxis 
-                    tick={{ fontSize: 11, fill: theme.muted }}
-                    domain={[0, 100]}
-                    unit="%"
-                    tickLine={false}
-                    axisLine={false}
-                    tickCount={6}
-                  />
-                  <Tooltip
-                    cursor={{ fill: theme.border, opacity: 0.3 }}
-                    contentStyle={{
-                      background: theme.card,
-                      border: "1px solid " + theme.border,
-                      borderRadius: 10,
-                      color: theme.text,
-                      fontSize: 13,
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-                    }}
-                    formatter={(value, name, props) => [
-                      value + "% approval rate",
-                      props.payload.column
-                    ]}
-                  />
-                  <ReferenceLine
-                    y={Math.round(biasResults.groupResults.reduce((a,b) => a + b.approvalRate, 0) / (biasResults.groupResults.length || 1))}
-                    stroke="#3B82F6"
-                    strokeDasharray="5 5"
-                    strokeWidth={1.5}
-                    label={{
-                      value: "avg",
-                      position: "insideTopRight",
-                      fontSize: 11,
-                      fill: "#3B82F6"
-                    }}
-                  />
-                  <Bar dataKey="approvalRate" radius={[6, 6, 0, 0]} maxBarSize={60}>
-                    {biasResults.groupResults.map((g, i) => (
-                      <Cell key={i} fill={
-                        g.riskLevel === "high" ? "#EF4444" :
-                        g.riskLevel === "medium" ? "#F59E0B" : "#22C55E"
-                      } />
-                    ))}
-                    <LabelList
-                      dataKey="approvalRate"
-                      position="top"
-                      formatter={(v) => v + "%"}
-                      style={{ fontSize: 11, fontWeight: 600, fill: theme.muted }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-              <div style={{ display: "flex", gap: 20, justifyContent: "center",
-                marginTop: 4, fontSize: 12, color: theme.muted }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ width: 10, height: 10, background: "#EF4444",
-                    borderRadius: 3, display: "inline-block" }} />High bias
-                </span>
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ width: 10, height: 10, background: "#F59E0B",
-                    borderRadius: 3, display: "inline-block" }} />Medium
-                </span>
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ width: 10, height: 10, background: "#22C55E",
-                    borderRadius: 3, display: "inline-block" }} />Fair
-                </span>
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ width: 12, height: 2, background: "#3B82F6",
-                    borderStyle: "dashed", display: "inline-block" }} />Average
-                </span>
-              </div>
-            </div>
-
-          </div>
-
-          <div style={{ background: theme.card, border: "1px solid " + theme.border,
-            borderRadius: 16, padding: "1.25rem", marginBottom: "1.5rem" }}>
-            <h2 style={{ fontSize: 15, fontWeight: 600, color: theme.text, 
-              marginBottom: "1rem" }}>Breakdown by group</h2>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid " + theme.border }}>
-                    <th style={{ textAlign: "left", padding: "6px 8px", 
-                      color: theme.muted, fontWeight: 500 }}>Group</th>
-                    <th style={{ textAlign: "left", padding: "6px 8px", 
-                      color: theme.muted, fontWeight: 500 }}>Column</th>
-                    <th style={{ textAlign: "right", padding: "6px 8px", 
-                      color: theme.muted, fontWeight: 500 }}>Approval</th>
-                    <th style={{ textAlign: "right", padding: "6px 8px", 
-                      color: theme.muted, fontWeight: 500 }}>Disparity</th>
-                    <th style={{ textAlign: "center", padding: "6px 8px", 
-                      color: theme.muted, fontWeight: 500 }}>Risk</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(showAllGroups 
-                    ? biasResults.groupResults 
-                    : biasResults.groupResults.slice(0, 8)
-                  ).map((g, i) => (
-                    <tr key={i} 
-                      onClick={() => handleGroupDrillDown(g)}
-                      style={{ 
-                        borderBottom: "0.5px solid " + theme.border,
-                        background: drillGroup?.group === g.group && drillGroup?.column === g.column
-                          ? theme.accent + "15"
-                          : i % 2 === 0 ? "transparent" : theme.bg + "50",
-                        cursor: "pointer"
-                      }}>
-                      <td style={{ padding: "8px 8px", color: theme.text, 
-                        fontWeight: 500 }}>{g.group}</td>
-                      <td style={{ padding: "8px 8px", color: theme.muted, 
-                        fontSize: 12 }}>{g.column}</td>
-                      <td style={{ padding: "8px 8px", color: theme.text, 
-                        textAlign: "right", fontWeight: 600 }}>{g.approvalRate}%</td>
-                      <td style={{ padding: "8px 8px", textAlign: "right",
-                        color: g.riskLevel === "high" ? "#DC2626" : 
-                               g.riskLevel === "medium" ? "#D97706" : "#16A34A",
-                        fontWeight: 500 }}>{g.disparity}%</td>
-                      <td style={{ padding: "8px 8px", textAlign: "center" }}>
-                        <span style={{ 
-                          padding: "2px 8px", borderRadius: 10, fontSize: 11,
-                          fontWeight: 500,
-                          background: g.riskLevel === "high" ? "#FEE2E2" : 
-                                      g.riskLevel === "medium" ? "#FEF3C7" : "#DCFCE7",
-                          color: g.riskLevel === "high" ? "#DC2626" : 
-                                 g.riskLevel === "medium" ? "#D97706" : "#16A34A"
-                        }}>
-                          {g.riskLevel === "high" ? "High" : 
-                           g.riskLevel === "medium" ? "Med" : "Fair"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {biasResults.groupResults.length > 8 && (
-                <button
-                  onClick={() => setShowAllGroups(!showAllGroups)}
-                  style={{
-                    width: "100%", padding: "10px", borderRadius: 10,
-                    border: "1px solid " + theme.border,
-                    background: "transparent", cursor: "pointer",
-                    fontSize: 13, color: theme.muted, marginTop: 12, marginBottom: 8
-                  }}
-                >
-                  {showAllGroups 
-                    ? "Show less" 
-                    : "Show all " + biasResults.groupResults.length + " groups"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {drillGroup && (
-            <div style={{
-              background: theme.card,
-              border: "1px solid " + theme.accent,
-              borderRadius: 16, padding: "1.5rem",
-              marginBottom: "1.5rem",
-              borderLeft: "4px solid " + theme.accent
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between",
-                alignItems: "center", marginBottom: 12 }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: theme.accent,
-                    textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-                    Gemini explains — {drillGroup.group}
-                  </div>
-                  <div style={{ fontSize: 13, color: theme.muted }}>
-                    {drillGroup.approvalRate}% approval rate — {drillGroup.disparity}% disparity
-                  </div>
-                </div>
-                <button onClick={() => { setDrillGroup(null); setDrillExplanation(null); }}
-                  style={{ background: "transparent", border: "none", 
-                    cursor: "pointer", color: theme.muted, fontSize: 18 }}>
-                  x
-                </button>
-              </div>
-              
-              {drillLoading ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 10,
-                  color: theme.muted, fontSize: 14 }}>
-                  <div style={{ width: 16, height: 16, border: "2px solid " + theme.border,
-                    borderTop: "2px solid " + theme.accent, borderRadius: "50%",
-                    animation: "spin 1s linear infinite" }} />
-                  Gemini is analyzing this group...
-                </div>
-              ) : (
-                <p style={{ fontSize: 14, color: theme.text, lineHeight: 1.8,
-                  margin: 0 }}>
-                  {drillExplanation}
-                </p>
-              )}
-            </div>
-          )}
-
-          {geminiResults && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: "1.5rem" }}>
-              <div style={{ background: theme.card, border: "1px solid " + theme.border,
-                borderRadius: 16, padding: "1.25rem" }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: theme.accent,
-                  textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+          {/* LEFT COLUMN */}
+          <div>
+            {/* Gemini AI Analysis */}
+            {geminiResults && (
+              <div style={{ background: theme.card,
+                border: "1px solid " + theme.border,
+                borderRadius: 16, padding: "1.25rem",
+                marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 600,
+                  color: theme.accent, textTransform: "uppercase",
+                  letterSpacing: "0.06em", marginBottom: 8,
+                  display: "flex", alignItems: "center", gap: 8 }}>
                   Gemini AI Analysis
                   {geminiResults._source === "gemini" ? (
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10,
-                      background: "#DCFCE7", color: "#16A34A", fontWeight: 500,
-                      marginLeft: 8 }}>
-                      Live AI
-                    </span>
+                    <span style={{ fontSize: 10, padding: "2px 8px",
+                      borderRadius: 10, background: "#DCFCE7",
+                      color: "#16A34A" }}>Live AI</span>
                   ) : (
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10,
-                      background: "#FEF3C7", color: "#D97706", fontWeight: 500,
-                      marginLeft: 8 }}>
-                      Estimated
-                    </span>
+                    <span style={{ fontSize: 10, padding: "2px 8px",
+                      borderRadius: 10, background: "#FEF3C7",
+                      color: "#D97706" }}>Estimated</span>
                   )}
                 </div>
-                <p style={{ fontSize: 14, color: theme.text, lineHeight: 1.7, margin: 0 }}>
+                <p style={{ fontSize: 13, color: theme.text,
+                  lineHeight: 1.7, margin: "0 0 10px" }}>
                   {geminiResults.summary}
                 </p>
                 {geminiResults.rootCause && (
-                  <div style={{ marginTop: 12, padding: "10px 14px", background: theme.bg,
-                    borderRadius: 8, fontSize: 13, color: theme.text, border: "1px solid " + theme.border }}>
+                  <div style={{ background: theme.bg, borderRadius: 8,
+                    padding: "10px 12px", fontSize: 12,
+                    color: theme.text, lineHeight: 1.6 }}>
                     <strong>Root cause:</strong> {geminiResults.rootCause}
                   </div>
                 )}
               </div>
-              
-              {geminiResults.recommendations && (
-                <div>
-                  <ScoreSimulator
-                    biasResults={biasResults}
-                    geminiResults={geminiResults}
-                    theme={theme}
-                  />
-                  <div id="section-fixes" style={{ background: theme.card, border: "1px solid " + theme.border, 
-                    borderRadius: 16, padding: "1.25rem" }}>
-                    <h2 style={{ fontSize: 16, fontWeight: 600, color: theme.text, marginBottom: "1rem" }}>
-                      Recommended fixes
-                    </h2>
-                  {geminiResults.recommendations.map((r, i) => (
-                    <div key={i} style={{ background: theme.bg, border: "1px solid " + theme.border,
-                      borderRadius: 12, padding: "12px", marginBottom: 8 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: theme.text }}>
-                          {i + 1}. {r.title}
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12 }}>
-                          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10,
-                            background: "#DCFCE7", color: "#16A34A", fontWeight: 500 }}>
-                            +{r.estimatedImprovement}%
-                          </span>
-                          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10,
-                            background: theme.card, color: theme.muted, border: "1px solid " + theme.border }}>
-                            {r.difficulty}
-                          </span>
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 13, color: theme.muted, marginTop: 6, lineHeight: 1.5 }}>
-                        {r.explanation}
-                      </div>
-                    </div>
-                  ))}
+            )}
+
+            {/* Bar chart */}
+            <div style={{ background: theme.card,
+              border: "1px solid " + theme.border,
+              borderRadius: 16, padding: "1.25rem",
+              marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between",
+                alignItems: "center", marginBottom: "1rem" }}>
+                <h2 style={{ fontSize: 14, fontWeight: 600,
+                  color: theme.text, margin: 0 }}>
+                  Approval rate by group
+                </h2>
+              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={[...biasResults.groupResults]
+                  .sort((a,b) => b.disparity - a.disparity)
+                  .slice(0, 6)}
+                  margin={{ top: 20, right: 10, left: -20, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" 
+                    stroke={theme.border} vertical={false}/>
+                  <XAxis dataKey="group" tick={{ fontSize: 10, 
+                    fill: theme.muted }} interval={0} height={45}
+                    angle={-25} textAnchor="end"
+                    tickFormatter={v => v.length > 9 ? v.slice(0,9)+".." : v}/>
+                  <YAxis tick={{ fontSize: 10, fill: theme.muted }}
+                    domain={[0,100]} unit="%" tickLine={false}
+                    axisLine={false}/>
+                  <Tooltip contentStyle={{ background: theme.card,
+                    border: "1px solid " + theme.border,
+                    borderRadius: 8, color: theme.text, fontSize: 12 }}
+                    formatter={v => v + "%"}/>
+                  <ReferenceLine y={Math.round(
+                    biasResults.groupResults.reduce((a,b) => 
+                      a + b.approvalRate, 0) / 
+                    (biasResults.groupResults.length || 1))}
+                    stroke="#3B82F6" strokeDasharray="4 4"
+                    label={{ value: "avg", fontSize: 10,
+                      fill: "#3B82F6", position: "insideTopRight" }}/>
+                  <Bar dataKey="approvalRate" radius={[4,4,0,0]}
+                    maxBarSize={40}>
+                    {[...biasResults.groupResults]
+                      .sort((a,b) => b.disparity - a.disparity)
+                      .slice(0, 6)
+                      .map((g, i) => (
+                        <Cell key={i} fill={
+                          g.riskLevel === "high" ? "#EF4444" :
+                          g.riskLevel === "medium" ? "#F59E0B" : "#22C55E"}/>
+                      ))}
+                    <LabelList dataKey="approvalRate" position="top"
+                      formatter={v => v + "%"}
+                      style={{ fontSize: 10, fill: theme.muted }}/>
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Fairness definition toggle */}
+            <FairnessToggle biasResults={biasResults} theme={theme}
+              onDefinitionChange={(def) => console.log(def)} />
+          </div>
+
+          {/* MIDDLE COLUMN */}
+          <div>
+            {/* Group breakdown table */}
+            <div style={{ background: theme.card,
+              border: "1px solid " + theme.border,
+              borderRadius: 16, padding: "1.25rem",
+              marginBottom: 16 }}>
+              <h2 style={{ fontSize: 14, fontWeight: 600,
+                color: theme.text, marginBottom: "1rem" }}>
+                Breakdown by group
+              </h2>
+              <div style={{ display: "grid",
+                gridTemplateColumns: "1fr auto auto auto",
+                gap: "0", fontSize: 11,
+                color: theme.muted, marginBottom: 8,
+                padding: "0 8px" }}>
+                <span>Group</span>
+                <span style={{ textAlign: "right", marginRight: 16 }}>Approval</span>
+                <span style={{ textAlign: "right", marginRight: 16 }}>Disparity</span>
+                <span>Risk</span>
+              </div>
+              {(showAllGroups
+                ? biasResults.groupResults
+                : biasResults.groupResults.slice(0, 8)
+              ).map((g, i) => (
+                <div key={i} onClick={() => handleGroupDrillDown(g)}
+                  style={{ display: "grid",
+                    gridTemplateColumns: "1fr auto auto auto",
+                    gap: 0, padding: "8px",
+                    borderRadius: 8, cursor: "pointer",
+                    background: drillGroup?.group === g.group
+                      ? theme.accent + "10" : "transparent",
+                    border: drillGroup?.group === g.group
+                      ? "1px solid " + theme.accent
+                      : "1px solid transparent",
+                    marginBottom: 4, alignItems: "center",
+                    transition: "all 0.15s" }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500,
+                      color: theme.text }}>{g.group}</div>
+                    <div style={{ fontSize: 11,
+                      color: theme.muted }}>{g.column}</div>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600,
+                    color: g.riskLevel === "high" ? "#DC2626"
+                      : g.riskLevel === "medium" ? "#D97706" : "#16A34A",
+                    marginRight: 16, textAlign: "right" }}>
+                    {g.approvalRate}%
+                  </div>
+                  <div style={{ fontSize: 13, color: theme.muted,
+                    marginRight: 16, textAlign: "right" }}>
+                    {g.disparity}%
+                  </div>
+                  <span style={{ fontSize: 11, padding: "2px 8px",
+                    borderRadius: 10, fontWeight: 500, whiteSpace: "nowrap",
+                    background: g.riskLevel === "high" ? "#FEE2E2"
+                      : g.riskLevel === "medium" ? "#FEF3C7" : "#DCFCE7",
+                    color: g.riskLevel === "high" ? "#DC2626"
+                      : g.riskLevel === "medium" ? "#D97706" : "#16A34A" }}>
+                    {g.riskLevel === "high" ? "High" 
+                      : g.riskLevel === "medium" ? "Med" : "Fair"}
+                  </span>
                 </div>
-                </div>
+              ))}
+              {biasResults.groupResults.length > 8 && (
+                <button onClick={() => setShowAllGroups(!showAllGroups)}
+                  style={{ width: "100%", padding: "8px", borderRadius: 8,
+                    border: "1px solid " + theme.border,
+                    background: "transparent", cursor: "pointer",
+                    fontSize: 12, color: theme.muted, marginTop: 4 }}>
+                  {showAllGroups ? "Show less"
+                    : "Show all " + biasResults.groupResults.length + " groups"}
+                </button>
               )}
             </div>
-          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: "1.5rem" }}>
-            {biasResults.metrics && (
-              <ComplianceMapper 
-                biasResults={biasResults} 
-                theme={theme} 
-              />
+            {/* Drill down panel */}
+            {drillGroup && (
+              <div style={{ background: theme.card,
+                border: "1px solid " + theme.accent,
+                borderRadius: 16, padding: "1.25rem",
+                marginBottom: 16,
+                borderLeft: "4px solid " + theme.accent }}>
+                <div style={{ display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600,
+                    color: theme.accent, textTransform: "uppercase",
+                    letterSpacing: "0.06em" }}>
+                    Gemini explains — {drillGroup.group}
+                  </div>
+                  <button onClick={() => {
+                      setDrillGroup(null);
+                      setDrillExplanation(null);
+                    }}
+                    style={{ background: "transparent", border: "none",
+                      cursor: "pointer", color: theme.muted,
+                      fontSize: 16 }}>x</button>
+                </div>
+                {drillLoading ? (
+                  <div style={{ display: "flex", alignItems: "center",
+                    gap: 10, color: theme.muted, fontSize: 13 }}>
+                    <div style={{ width: 14, height: 14,
+                      border: "2px solid " + theme.border,
+                      borderTop: "2px solid " + theme.accent,
+                      borderRadius: "50%",
+                      animation: "spin 1s linear infinite" }} />
+                    Analyzing...
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 13, color: theme.text,
+                    lineHeight: 1.7, margin: 0 }}>
+                    {drillExplanation}
+                  </p>
+                )}
+              </div>
             )}
-            
-            {biasResults.intersectionalFlags.length > 0 ? (
-              <div style={{ background: theme.card, border: "1px solid " + theme.border, 
-                borderRadius: 16, padding: "1.25rem" }}>
-                <h2 style={{ fontSize: 16, fontWeight: 600, color: theme.text, marginBottom: "1rem" }}>
+
+            {/* Intersectional bias */}
+            {biasResults.intersectionalFlags?.length > 0 && (
+              <div style={{ background: theme.card,
+                border: "1px solid " + theme.border,
+                borderRadius: 16, padding: "1.25rem",
+                marginBottom: 16 }}>
+                <h2 style={{ fontSize: 14, fontWeight: 600,
+                  color: "#DC2626", marginBottom: "1rem" }}>
                   Intersectional bias detected
                 </h2>
                 {biasResults.intersectionalFlags.map((f, i) => (
-                  <div key={i} style={{ background: "#FEF2F2", border: "1px solid #FECACA",
-                    borderRadius: 12, padding: "1rem 1.25rem", marginBottom: 8 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: "#DC2626" }}>{f.groups}</div>
-                    <div style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>
-                      Approval rate: {f.approvalRate}% vs baseline {f.baseRate}% — {f.disparity}% disparity
+                  <div key={i} style={{ background: "#FEF2F2",
+                    border: "1px solid #FECACA", borderRadius: 10,
+                    padding: "10px 12px", marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500,
+                      color: "#DC2626" }}>{f.groups}</div>
+                    <div style={{ fontSize: 12, color: "#374151",
+                      marginTop: 4 }}>
+                      {f.approvalRate}% vs baseline {f.baseRate}% — {f.disparity}% disparity
                     </div>
                   </div>
                 ))}
               </div>
-            ) : <div />}
+            )}
+
+            {/* Score simulator */}
+            <ScoreSimulator biasResults={biasResults}
+              geminiResults={geminiResults} theme={theme} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: "1.5rem" }}>
-            <button
-              id="section-pdf"
-              onClick={() => generateComplianceReport(fileName, biasResults, geminiResults)}
-              style={{
-                width: "100%", padding: "14px", borderRadius: 10, fontSize: 15,
-                fontWeight: 600, border: "2px solid " + theme.accent, cursor: "pointer",
-                background: theme.card, color: theme.accent
-              }}
-            >
-              Download Compliance Report PDF
-            </button>
+          {/* RIGHT COLUMN */}
+          <div>
+            {/* Advanced metrics */}
+            {advancedMetrics && (
+              <div style={{ background: theme.card,
+                border: "1px solid " + theme.border,
+                borderRadius: 16, padding: "1.25rem",
+                marginBottom: 16 }}>
+                <h2 style={{ fontSize: 14, fontWeight: 600,
+                  color: theme.text, marginBottom: "1rem" }}>
+                  Advanced metrics
+                </h2>
+                <div style={{ display: "grid",
+                  gridTemplateColumns: "1fr 1fr", gap: 8,
+                  marginBottom: 10 }}>
+                  {[
+                    { label: "Composite score",
+                      value: (advancedMetrics.compositeScore?.composite || 0) + "/100",
+                      color: scoreColor },
+                    { label: "Equal opportunity",
+                      value: Object.values(advancedMetrics.byColumn)[0]?.equalOpportunityDiff !== undefined ? Object.values(advancedMetrics.byColumn)[0]?.equalOpportunityDiff + "%" : "N/A",
+                      color: "#DC2626" },
+                    { label: "FPR parity diff",
+                      value: Object.values(advancedMetrics.byColumn)[0]?.fprParityDiff !== undefined ? Object.values(advancedMetrics.byColumn)[0]?.fprParityDiff + "%" : "N/A",
+                      color: "#D97706" },
+                    { label: "Stat. parity ratio",
+                      value: biasResults.metrics?.statisticalParityRatio || "N/A",
+                      color: theme.text }
+                  ].map((m, i) => (
+                    <div key={i} style={{ background: theme.bg,
+                      borderRadius: 8, padding: "10px 12px",
+                      border: "1px solid " + theme.border }}>
+                      <div style={{ fontSize: 10, color: theme.muted,
+                        marginBottom: 4 }}>{m.label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700,
+                        color: m.color }}>{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+                {advancedMetrics.warnings?.length > 0 && (
+                  <div style={{ background: "#FEF3C7",
+                    border: "1px solid #FDE68A", borderRadius: 8,
+                    padding: "8px 10px", fontSize: 11,
+                    color: "#92400E" }}>
+                    {advancedMetrics.warnings[0]}
+                  </div>
+                )}
+              </div>
+            )}
 
-            <button onClick={() => { setScreen("upload"); setGeminiResults(null); }}
-              style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 15,
-                fontWeight: 600, border: "none", cursor: "pointer",
-                background: theme.accent, color: "#FFFFFF" }}>
+            {/* Regulatory compliance */}
+            <ComplianceMapper biasResults={biasResults} theme={theme} />
+
+            {/* Recommended fixes */}
+            {geminiResults?.recommendations && (
+              <div style={{ background: theme.card,
+                border: "1px solid " + theme.border,
+                borderRadius: 16, padding: "1.25rem",
+                marginBottom: 16 }}>
+                <h2 style={{ fontSize: 14, fontWeight: 600,
+                  color: theme.text, marginBottom: "1rem" }}>
+                  Recommended fixes
+                </h2>
+                {geminiResults.recommendations.map((r, i) => (
+                  <div key={i} style={{ background: theme.bg,
+                    border: "1px solid " + theme.border,
+                    borderRadius: 10, padding: "10px 12px",
+                    marginBottom: 8 }}>
+                    <div style={{ display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start", marginBottom: 4 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500,
+                        color: theme.text }}>
+                        {i + 1}. {r.title}
+                      </div>
+                      <div style={{ display: "flex", gap: 4,
+                        flexShrink: 0, marginLeft: 8 }}>
+                        <span style={{ fontSize: 10, padding: "2px 6px",
+                          borderRadius: 8, background: "#DCFCE7",
+                          color: "#16A34A", fontWeight: 600 }}>
+                          +{r.estimatedImprovement}%
+                        </span>
+                        <span style={{ fontSize: 10, padding: "2px 6px",
+                          borderRadius: 8, background: theme.border + "40",
+                          color: theme.muted }}>
+                          {r.difficulty}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: theme.muted,
+                      lineHeight: 1.5 }}>{r.explanation}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Regulatory risk */}
+            {geminiResults?.regulatoryRisk && (
+              <div style={{ background: "#FEF2F2",
+                border: "1px solid #FECACA", borderRadius: 16,
+                padding: "1.25rem", marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 600,
+                  color: "#DC2626", textTransform: "uppercase",
+                  letterSpacing: "0.06em", marginBottom: 8 }}>
+                  Regulatory risk
+                </div>
+                <p style={{ fontSize: 12, color: "#374151",
+                  lineHeight: 1.6, margin: 0 }}>
+                  {geminiResults.regulatoryRisk}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div style={{ gridColumn: "1 / -1", 
+            display: "flex", gap: 12, marginTop: 8 }}>
+            <button
+              onClick={() => { setScreen("upload"); setGeminiResults(null); 
+                setBiasResults(null); setAdvancedMetrics(null); }}
+              style={{ flex: 1, padding: "14px", borderRadius: 10,
+                fontSize: 15, fontWeight: 600, border: "none",
+                cursor: "pointer", background: "#3B82F6", color: "white" }}>
               Analyze another dataset
             </button>
             <button
               onClick={() => setScreen("compare")}
-              style={{ width: "100%", padding: "14px", borderRadius: 10,
-                fontSize: 15, fontWeight: 600, marginTop: 10,
-                border: "2px solid #8B5CF6", cursor: "pointer",
-                background: "transparent", color: "#8B5CF6" }}>
+              style={{ flex: 1, padding: "14px", borderRadius: 10,
+                fontSize: 15, fontWeight: 600, cursor: "pointer",
+                border: "2px solid #8B5CF6", background: "transparent",
+                color: "#8B5CF6" }}>
               Compare two datasets
+            </button>
+            <button
+              onClick={() => generateComplianceReport(
+                fileName, biasResults, geminiResults)}
+              style={{ flex: 1, padding: "14px", borderRadius: 10,
+                fontSize: 15, fontWeight: 600, cursor: "pointer",
+                border: "2px solid #3B82F6", background: "transparent",
+                color: "#3B82F6" }}>
+              Download PDF Report
             </button>
           </div>
         </div>

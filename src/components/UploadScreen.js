@@ -1,6 +1,8 @@
 import React, { useState, useRef } from "react";
 import Papa from "papaparse";
 import SheetsImport from "./SheetsImport";
+import DataFlowViz from "./DataFlowViz";
+import CulturalBiasWarning from "./CulturalBiasWarning";
 
 export default function UploadScreen({ onAnalyze, theme }) {
   const [csvData, setCsvData] = useState(null);
@@ -101,24 +103,59 @@ export default function UploadScreen({ onAnalyze, theme }) {
         </p>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: "1.5rem",
-        flexWrap: "wrap" }}>
-        {[
-          { label: "Model-agnostic", desc: "Works with any AI system", color: "#7C3AED" },
-          { label: "100% private", desc: "Data stays in browser", color: "#16A34A" },
-          { label: "6 regulations", desc: "EU AI Act + India DPDP", color: "#DC2626" },
-          { label: "Free forever", desc: "No sign-up required", color: "#0284C7" }
-        ].map((b, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6,
-            padding: "5px 12px", borderRadius: 20, fontSize: 12,
-            border: "1px solid " + b.color + "40",
-            background: b.color + "10" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%",
-              background: b.color, flexShrink: 0 }} />
-            <span style={{ fontWeight: 600, color: b.color }}>{b.label}</span>
-            <span style={{ color: theme.muted }}>— {b.desc}</span>
+      <div style={{ marginBottom: "1.5rem" }}>
+        <div style={{ background: "linear-gradient(135deg, #7C3AED15, #3B82F615)",
+          border: "1px solid #7C3AED40", borderRadius: 12,
+          padding: "12px 16px", marginBottom: 10,
+          display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10,
+            background: "#7C3AED20", display: "flex",
+            alignItems: "center", justifyContent: "center",
+            fontSize: 20, flexShrink: 0 }}>
+            🔍
           </div>
-        ))}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700,
+              color: "#7C3AED", marginBottom: 2 }}>
+              Model-Agnostic — Works with ANY AI system
+            </div>
+            <div style={{ fontSize: 12, color: theme.muted, lineHeight: 1.5 }}>
+              ChatGPT, Gemini, Claude, custom ML models, rule-based systems —
+              if it makes decisions, FairSight can audit it.
+              No API access needed. No model integration required.
+              Just upload the decisions as a CSV.
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column",
+            gap: 4, flexShrink: 0 }}>
+            {["ChatGPT", "Gemini", "Claude", "Custom ML"].map((m, i) => (
+              <span key={i} style={{ fontSize: 10, padding: "2px 8px",
+                borderRadius: 8, background: "#7C3AED15",
+                color: "#7C3AED", fontWeight: 500, textAlign: "center" }}>
+                {m}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[
+            { label: "100% private", desc: "Data stays in browser", color: "#16A34A" },
+            { label: "6 regulations", desc: "EU AI Act + India DPDP", color: "#DC2626" },
+            { label: "Free forever", desc: "No sign-up required", color: "#0284C7" },
+            { label: "Real-time", desc: "Results in seconds", color: "#D97706" }
+          ].map((b, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center",
+              gap: 6, padding: "5px 12px", borderRadius: 20,
+              fontSize: 12, border: "1px solid " + b.color + "40",
+              background: b.color + "10" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%",
+                background: b.color, flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, color: b.color }}>{b.label}</span>
+              <span style={{ color: theme.muted }}>— {b.desc}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: "1.5rem",
@@ -293,6 +330,10 @@ export default function UploadScreen({ onAnalyze, theme }) {
         </div>
       )}
 
+      {columns.length > 0 && (
+        <CulturalBiasWarning columns={columns} theme={theme} />
+      )}
+
       {preview.length > 0 && (
         <div style={{ marginBottom: "2rem", overflowX: "auto" }}>
           <p style={{ fontSize: 13, color: theme.muted, marginBottom: 8 }}>Preview - first 5 rows</p>
@@ -331,6 +372,10 @@ export default function UploadScreen({ onAnalyze, theme }) {
       )}
       </>
       )}
+
+      <div style={{ marginTop: "2rem" }}>
+        <DataFlowViz theme={theme} />
+      </div>
     </div>
   );
 }
