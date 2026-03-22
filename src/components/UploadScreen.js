@@ -102,6 +102,26 @@ export default function UploadScreen({ onAnalyze, theme }) {
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: "1.5rem",
+        flexWrap: "wrap" }}>
+        {[
+          { label: "Model-agnostic", desc: "Works with any AI system", color: "#7C3AED" },
+          { label: "100% private", desc: "Data stays in browser", color: "#16A34A" },
+          { label: "6 regulations", desc: "EU AI Act + India DPDP", color: "#DC2626" },
+          { label: "Free forever", desc: "No sign-up required", color: "#0284C7" }
+        ].map((b, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6,
+            padding: "5px 12px", borderRadius: 20, fontSize: 12,
+            border: "1px solid " + b.color + "40",
+            background: b.color + "10" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%",
+              background: b.color, flexShrink: 0 }} />
+            <span style={{ fontWeight: 600, color: b.color }}>{b.label}</span>
+            <span style={{ color: theme.muted }}>— {b.desc}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: "1.5rem",
         background: theme.bg, borderRadius: 10, padding: 4,
         border: "1px solid " + theme.border }}>
         {[
