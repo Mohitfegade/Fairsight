@@ -1,9 +1,9 @@
 
 import React from "react";
 
-export default function LandingPage({ onGetStarted }) {
+export default function LandingPage({ onGetStarted, darkMode, theme }) {
   return (
-    <div style={{ fontFamily: "sans-serif", background: "#fff" }}>
+    <div style={{ minHeight: "100vh", background: theme.bg, fontFamily: "sans-serif" }}>
 
       <div style={{ background: "#1E3A5F", padding: "12px 24px",
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -57,12 +57,24 @@ export default function LandingPage({ onGetStarted }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
           gap: 20, maxWidth: 960, margin: "0 auto" }}>
           {[
-            { company: "Amazon", year: "2018", title: "AI hiring tool discriminated against women",
-              desc: "Amazon's resume screening AI taught itself to penalize resumes containing the word 'women'. It was scrapped after years of biased hiring decisions." },
-            { company: "US Courts", year: "2016", title: "COMPAS algorithm showed racial bias",
-              desc: "A court sentencing algorithm rated Black defendants twice as likely to reoffend as white defendants with identical profiles. Used in real sentencing." },
-            { company: "US Hospitals", year: "2019", title: "Healthcare AI gave less care to Black patients",
-              desc: "A widely used hospital algorithm systematically gave lower care priority to Black patients vs white patients with the same health conditions." }
+            {
+              company: "Amazon",
+              year: "2018",
+              title: "AI hiring tool discriminated against women",
+              desc: "Amazon's resume screening AI taught itself to penalize resumes containing the word 'women'. It was scrapped after years of biased hiring decisions affecting thousands of applicants."
+            },
+            {
+              company: "Indian Banks",
+              year: "2023",
+              title: "Credit scoring AI penalizes rural applicants",
+              desc: "Multiple Indian fintech platforms were found using postal codes and mobile data as proxy variables — systematically rejecting loan applications from rural and low-income communities at far higher rates."
+            },
+            {
+              company: "US Courts",
+              year: "2016",
+              title: "COMPAS algorithm showed racial bias",
+              desc: "A court sentencing algorithm rated Black defendants twice as likely to reoffend as white defendants with identical profiles. Used in real sentencing decisions affecting thousands."
+            }
           ].map((item, i) => (
             <div key={i} style={{ background: "white", borderRadius: 12,
               padding: "1.25rem", border: "1px solid #FECACA" }}>
